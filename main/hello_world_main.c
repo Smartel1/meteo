@@ -115,7 +115,7 @@ void app_main(void)
                 &x_lsb_register, 1,
                 x_response, 6,
                 10));
-        ESP_LOGI(TAG, "x = [%d][%d] y = [%d][%d] yz = [%d][%d]", x_response[0], x_response[1],
+        ESP_LOGI(TAG, "x = [%d][%d] y = [%d][%d] z = [%d][%d]", x_response[0], x_response[1],
                  x_response[2], x_response[3],
                  x_response[4], x_response[5]);
         vTaskDelay(250);
