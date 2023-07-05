@@ -13,10 +13,10 @@ static const char *TAG = "example";
    or you can edit the following line and set a number here.
 */
 #define BLINK_GPIO CONFIG_BLINK_GPIO
+#define HALL_GPIO GPIO_NUM_12
 #define GPIO_SDA GPIO_NUM_21
 #define GPIO_SCL GPIO_NUM_22
 
-static uint8_t s_led_state = 0;
 static uint8_t gpio12state = 0;
 static int64_t prevTickMs = 0;
 
@@ -28,16 +28,17 @@ static float Y_SCALE = 3.03f;
 
 static qmc5883l_settings compass_settings;
 
-static void blink_led(void) {
-    /* Set the GPIO level according to the state (LOW or HIGH)*/
-    gpio_set_level(BLINK_GPIO, s_led_state);
-}
-
-static void configure_led(void) {
-    ESP_LOGI(TAG, "Example configured to blink GPIO LED!");
+static void init_led(void) {
     gpio_reset_pin(BLINK_GPIO);
     /* Set the GPIO as a push/pull output */
     gpio_set_direction(BLINK_GPIO, GPIO_MODE_OUTPUT);
+}
+
+static void init_hall_sensor(void) {
+    gpio_reset_pin(HALL_GPIO);
+    /* Set the GPIO as a push/pull output */
+    gpio_set_direction(HALL_GPIO, GPIO_MODE_INPUT);
+    gpio_pullup_en(HALL_GPIO);
 }
 
 static void init_compass(void) {
@@ -68,42 +69,34 @@ static void init_compass(void) {
 
 
 void app_main(void) {
-
-    /* Configure the peripheral according to the LED type */
-    configure_led();
-
-//    while (1) {
-    s_led_state = 1;
-    ESP_LOGI(TAG, "Turning the LED %s!", s_led_state == true ? "ON" : "OFF");
-    blink_led();
-    /* Toggle the LED state */
-    s_led_state = !s_led_state;
-    vTaskDelay(CONFIG_BLINK_PERIOD / portTICK_PERIOD_MS);
-//    }
-//    while (1) {
-//        int signal = gpio_get_level(12);
-//        if (gpio12state != signal) {
-//            gpio12state = signal;
-//            if (gpio12state == 0) {
-//                int64_t time = esp_timer_get_time();
-//                if (prevTickMs != 0) {
-//                    float freq = 1 / ((float)(time - prevTickMs) / 1000000);
-//                    ESP_LOGI(TAG, "frequency is %f hz", freq);
-//                }
-//                prevTickMs = time;
-//            }
-//            ESP_LOGI(TAG, "Signal on GPIO 12 is %s!", signal == 1 ? "ON" : "OFF");
-//        }
-//        vTaskDelay(1);
-//    }
-
+    init_led();
+    init_hall_sensor();
     init_compass();
-    int16_t azimuth;
-    int16_t temp;
+
     while (1) {
-        qmc5883l_get_azimuth(&compass_settings, &azimuth);
-        qmc5883l_get_temp(&compass_settings, &temp);
-        ESP_LOGI(TAG, "azimuth = %d temp = %d", azimuth, temp);
-        vTaskDelay(50);
+        int hall_sensor_on = gpio_get_level(12) == 0;
+        if (gpio12state != hall_sensor_on) {
+            gpio_set_level(BLINK_GPIO, hall_sensor_on);
+            gpio12state = hall_sensor_on;
+            if (gpio12state == 0) {
+                int64_t time = esp_timer_get_time();
+                if (prevTickMs != 0) {
+                    float freq = 1 / ((float)(time - prevTickMs) / 1000000);
+                    ESP_LOGI(TAG, "frequency is %f hz", freq);
+                }
+                prevTickMs = time;
+            }
+            ESP_LOGI(TAG, "Hall sensor is %s!", hall_sensor_on ? "ON" : "OFF");
+        }
+        vTaskDelay(5);
     }
+
+//    int16_t azimuth;
+//    int16_t temp;
+//    while (1) {
+//        qmc5883l_get_azimuth(&compass_settings, &azimuth);
+//        qmc5883l_get_temp(&compass_settings, &temp);
+//        ESP_LOGI(TAG, "azimuth = %d temp = %d", azimuth, temp);
+//        vTaskDelay(50);
+//    }
 }
