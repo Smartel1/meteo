@@ -1,5 +1,3 @@
-#include <driver/i2c.h>
-
 /* The default I2C address of this chip */
 #define QMC5883L_ADDR 0x0D
 
@@ -63,27 +61,31 @@ typedef struct {
 } qmc5883l_data_t;
 
 typedef struct {
-    uint8_t bus;
-    uint8_t addr;
-} i2c_dev_t;
+    uint8_t port; // номер логического порта
+    uint8_t x_offset; // офсет по Х (отклонение среднего значения от нуля)
+    float x_scale; // коэфф. для X (для приведения всех осей к одному модулю)
+    uint8_t y_offset; // офсет по Y (отклонение среднего значения от нуля)
+    float y_scale; // коэфф. для Y (для приведения всех осей к одному модулю)
+} qmc5883l_settings;
 
-void qmc5883l_init(i2c_dev_t *dev);
-void qmc5883l_init_all(i2c_dev_t *dev, qmc5883l_mode_t *mode, qmc5883l_rate_t *rate, qmc5883l_range_t *range, qmc5883l_oversample_t *sample);
-bool qmc5883l_data_ready(i2c_dev_t *dev);
-void qmc5883l_reset(i2c_dev_t *dev);
-uint8_t qmc5883l_get_config(i2c_dev_t *dev);
+void qmc5883l_init(qmc5883l_settings *compass_address);
+void qmc5883l_init_all(qmc5883l_settings *compass_address, qmc5883l_mode_t *mode, qmc5883l_rate_t *rate, qmc5883l_range_t *range, qmc5883l_oversample_t *sample);
+bool qmc5883l_data_ready(qmc5883l_settings *compass_address);
+void qmc5883l_reset(qmc5883l_settings *compass_address);
+uint8_t qmc5883l_get_config(qmc5883l_settings *compass_address);
 
-qmc5883l_mode_t qmc5883l_get_mode(i2c_dev_t *dev);
-void qmc5883l_set_mode(i2c_dev_t *dev, qmc5883l_mode_t mode);
+qmc5883l_mode_t qmc5883l_get_mode(qmc5883l_settings *compass_address);
+void qmc5883l_set_mode(qmc5883l_settings *compass_address, qmc5883l_mode_t mode);
 
-qmc5883l_oversample_t qmc5883l_get_oversample(i2c_dev_t *dev);
-void qmc5883l_set_oversample(i2c_dev_t *dev, qmc5883l_oversample_t os);
+qmc5883l_oversample_t qmc5883l_get_oversample(qmc5883l_settings *compass_address);
+void qmc5883l_set_oversample(qmc5883l_settings *compass_address, qmc5883l_oversample_t os);
 
-qmc5883l_range_t qmc5883l_get_range(i2c_dev_t *dev);
-void qmc5883l_set_range(i2c_dev_t *dev, qmc5883l_range_t range);
+qmc5883l_range_t qmc5883l_get_range(qmc5883l_settings *compass_address);
+void qmc5883l_set_range(qmc5883l_settings *compass_address, qmc5883l_range_t range);
 
-qmc5883l_rate_t qmc5883l_get_rate(i2c_dev_t *dev);
-void qmc5883l_set_rate(i2c_dev_t *dev, qmc5883l_rate_t rate);
+qmc5883l_rate_t qmc5883l_get_rate(qmc5883l_settings *compass_address);
+void qmc5883l_set_rate(qmc5883l_settings *compass_address, qmc5883l_rate_t rate);
 
-bool qmc5883l_get_data(i2c_dev_t *dev, qmc5883l_data_t* data);
-bool qmc5883l_get_temp(i2c_dev_t *dev, uint16_t *temp);
+bool qmc5883l_get_data(qmc5883l_settings *compass_address, qmc5883l_data_t* data);
+bool qmc5883l_get_azimuth(qmc5883l_settings *compass_address, int16_t *angle);
+bool qmc5883l_get_temp(qmc5883l_settings *compass_address, int16_t *temp);

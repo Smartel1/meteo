@@ -1,6 +1,5 @@
-#include <stdio.h>
 #include <esp_timer.h>
-#include <driver/i2c.h>
+#include <math.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "driver/gpio.h"
@@ -20,7 +19,14 @@ static const char *TAG = "example";
 static uint8_t s_led_state = 0;
 static uint8_t gpio12state = 0;
 static int64_t prevTickMs = 0;
-static uint8_t COMPASS_I2C_ADDRESS = 0x0D;
+
+// калибровки компаса
+static uint8_t X_OFFSET = 150;
+static float X_SCALE = 3.2f;
+static uint8_t Y_OFFSET = 185;
+static float Y_SCALE = 3.03f;
+
+static qmc5883l_settings compass_settings;
 
 static void blink_led(void) {
     /* Set the GPIO level according to the state (LOW or HIGH)*/
@@ -33,6 +39,33 @@ static void configure_led(void) {
     /* Set the GPIO as a push/pull output */
     gpio_set_direction(BLINK_GPIO, GPIO_MODE_OUTPUT);
 }
+
+static void init_compass(void) {
+    int i2c_master_port = 0;
+    i2c_config_t conf = {
+            .mode = I2C_MODE_MASTER,
+            .sda_io_num = GPIO_SDA,         // select SDA GPIO specific to your project
+            .scl_io_num = GPIO_SCL,         // select SCL GPIO specific to your project
+            .sda_pullup_en = GPIO_PULLUP_ENABLE,
+            .scl_pullup_en = GPIO_PULLUP_ENABLE,
+            .master.clk_speed = 400000
+    };
+    ESP_ERROR_CHECK(i2c_param_config(i2c_master_port, &conf));
+    ESP_ERROR_CHECK(i2c_driver_install(i2c_master_port, I2C_MODE_MASTER, 0, 0, 0));
+    ESP_LOGI(TAG, "I2C initialized successfully");
+
+    qmc5883l_settings compass_settings_obj = {
+            .port = i2c_master_port,
+            .x_offset = X_OFFSET,
+            .x_scale = X_SCALE,
+            .y_offset = Y_OFFSET,
+            .y_scale = Y_SCALE
+    };
+    compass_settings = compass_settings_obj;
+    qmc5883l_init(&compass_settings);
+    ESP_LOGI(TAG, "Compass set successfully");
+}
+
 
 void app_main(void) {
 
@@ -64,33 +97,13 @@ void app_main(void) {
 //        vTaskDelay(1);
 //    }
 
-    int i2c_master_port = 0;
-    i2c_config_t conf = {
-            .mode = I2C_MODE_MASTER,
-            .sda_io_num = GPIO_SDA,         // select SDA GPIO specific to your project
-            .scl_io_num = GPIO_SCL,         // select SCL GPIO specific to your project
-            .sda_pullup_en = GPIO_PULLUP_ENABLE,
-            .scl_pullup_en = GPIO_PULLUP_ENABLE,
-            .master.clk_speed = 400000
-    };
-    ESP_ERROR_CHECK(i2c_param_config(i2c_master_port, &conf));
-    ESP_ERROR_CHECK(i2c_driver_install(i2c_master_port, I2C_MODE_MASTER, 0, 0, 0));
-    ESP_LOGI(TAG, "I2C initialized successfully");
-
-    i2c_dev_t compass_address = {
-            .bus = i2c_master_port,
-            .addr = COMPASS_I2C_ADDRESS
-    };
-    qmc5883l_init(&compass_address);
-    ESP_LOGI(TAG, "Compass set successfully");
-
+    init_compass();
+    int16_t azimuth;
+    int16_t temp;
     while (1) {
-        qmc5883l_data_t compass_data;
-        qmc5883l_get_data(&compass_address, &compass_data);
-        ESP_LOGI(TAG, "x = [%d] y = [%d] z = [%d]", compass_data.x, compass_data.y, compass_data.z);
-        uint16_t temp;
-        qmc5883l_get_temp(&compass_address, &temp);
-        ESP_LOGI(TAG, "temp = %d", temp);
-        vTaskDelay(250);
+        qmc5883l_get_azimuth(&compass_settings, &azimuth);
+        qmc5883l_get_temp(&compass_settings, &temp);
+        ESP_LOGI(TAG, "azimuth = %d temp = %d", azimuth, temp);
+        vTaskDelay(50);
     }
 }
