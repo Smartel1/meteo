@@ -1,11 +1,11 @@
 #include <esp_timer.h>
-#include <math.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "driver/gpio.h"
 #include "esp_log.h"
 #include "sdkconfig.h"
-#include "qmc5883l.c"
+#include <driver/i2c.h>
+#include "qmc5883l.h"
 
 static const char *TAG = "example";
 
@@ -73,7 +73,7 @@ void app_main(void) {
     init_hall_sensor();
     init_compass();
 
-    while (1) {
+    while (0) {
         int hall_sensor_on = gpio_get_level(12) == 0;
         if (gpio12state != hall_sensor_on) {
             gpio_set_level(BLINK_GPIO, hall_sensor_on);
@@ -91,12 +91,12 @@ void app_main(void) {
         vTaskDelay(5);
     }
 
-//    int16_t azimuth;
-//    int16_t temp;
-//    while (1) {
-//        qmc5883l_get_azimuth(&compass_settings, &azimuth);
-//        qmc5883l_get_temp(&compass_settings, &temp);
-//        ESP_LOGI(TAG, "azimuth = %d temp = %d", azimuth, temp);
-//        vTaskDelay(50);
-//    }
+    int16_t azimuth;
+    int16_t temp;
+    while (1) {
+        qmc5883l_get_azimuth(&compass_settings, &azimuth);
+        qmc5883l_get_temp(&compass_settings, &temp);
+        ESP_LOGI(TAG, "azimuth = %d temp = %d", azimuth, temp);
+        vTaskDelay(50);
+    }
 }

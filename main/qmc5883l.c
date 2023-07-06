@@ -1,8 +1,6 @@
 #include "qmc5883l.h"
 #include <driver/i2c.h>
-
-#define QMC5883L_MEASUREMENT_TIMEOUT 100000
-#define timeout_expired(start, len) ((uint32_t)(esp_timer_get_time() - (start)) >= (len))
+#include <math.h>
 
 void qmc5883l_init(qmc5883l_settings *settings) {
     qmc5883l_init_all(settings, NULL, NULL, NULL, NULL);
@@ -58,12 +56,6 @@ bool qmc5883l_get_data(qmc5883l_settings *settings, qmc5883l_data_t *data) {
     if (qmc5883l_get_mode(settings) == QMC5883L_CONFIG_STANDBY) {
         return false;
     }
-    uint32_t start = esp_timer_get_time();
-    while (!qmc5883l_data_ready(settings)) {
-        if (timeout_expired(start, QMC5883L_MEASUREMENT_TIMEOUT)) {
-            return false;
-        }
-    }
     //read data from device
     uint8_t buf[6];
     uint8_t packet[1] = {QMC5883L_X_LSB};
@@ -93,12 +85,6 @@ bool qmc5883l_get_temp(qmc5883l_settings *settings, int16_t *temp) {
     //check if device is operating and if data is ready;
     if (qmc5883l_get_mode(settings) == QMC5883L_CONFIG_STANDBY) {
         return false;
-    }
-    uint32_t start = esp_timer_get_time();
-    while (!qmc5883l_data_ready(settings)) {
-        if (timeout_expired(start, QMC5883L_MEASUREMENT_TIMEOUT)) {
-            return false;
-        }
     }
     //read data from device
     uint8_t buf[2];
