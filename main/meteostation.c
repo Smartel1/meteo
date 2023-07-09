@@ -5,7 +5,10 @@
 #include "esp_log.h"
 #include "sdkconfig.h"
 #include <driver/i2c.h>
+#include <driver/uart.h>
+#include <string.h>
 #include "qmc5883l.h"
+#include "sim800l.h"
 
 static const char *TAG = "example";
 
@@ -41,6 +44,40 @@ static void init_hall_sensor(void) {
     gpio_pullup_en(HALL_GPIO);
 }
 
+static float get_wind_speed(void) {
+    ESP_LOGI(TAG, "Measuring wind speed");
+    uint8_t rounds_count = 0;
+    bool prev_tick_hall_sensor_on = 0;
+    int64_t start_measurement_time = esp_timer_get_time();
+    while (esp_timer_get_time() - start_measurement_time < 5000000) {
+        bool current_tick_hall_sensor_on = gpio_get_level(12) == 0;
+        if (prev_tick_hall_sensor_on != current_tick_hall_sensor_on) {
+            gpio_set_level(BLINK_GPIO, current_tick_hall_sensor_on);
+            prev_tick_hall_sensor_on = current_tick_hall_sensor_on;
+            if (prev_tick_hall_sensor_on) {
+                rounds_count++;
+            }
+        }
+        vTaskDelay(1);
+    }
+    ESP_LOGI(TAG, "Rounds made in 5 sec: %d", rounds_count);
+    return rounds_count;
+}
+
+static uint8_t get_azimuth(void) {
+    int16_t azimuth;
+    qmc5883l_get_azimuth(&compass_settings, &azimuth);
+    ESP_LOGI(TAG, "azimuth = %d", azimuth);
+    return azimuth;
+}
+
+static uint8_t get_temp(void) {
+    int16_t temp;
+    qmc5883l_get_temp(&compass_settings, &temp);
+    ESP_LOGI(TAG, "temp = %d", temp);
+    return temp;
+}
+
 static void init_compass(void) {
     int i2c_master_port = 0;
     i2c_config_t conf = {
@@ -67,36 +104,37 @@ static void init_compass(void) {
     ESP_LOGI(TAG, "Compass set successfully");
 }
 
+void send_metrics(float wind_speed, int azimuth, int temperature) {
+    sendCommand("ATZ");
+    sendCommand("AT+SAPBR=3,1,\"CONTYPE\",\"GPRS\"");
+    sendCommand("AT+SAPBR=3,1,\"APN\",\"internet.mts.ru\"");
+    sendCommand("AT+SAPBR=1,1");
+    sendCommand("AT+SAPBR=2,1");
+    sendCommand("AT+HTTPINIT");
+    sendCommand("AT+HTTPPARA=\"CID\",1");
+    sendCommand("AT+HTTPPARA=\"URL\",\"http://193.124.125.33/metrics\"");
+    sendCommand("AT+HTTPPARA=\"CONTENT\",\"application/json\"");
+    char request_body[100];
+    sprintf(request_body, "{\"s\":%.1f,\"a\":%d,\"t\":%d}", wind_speed, azimuth, temperature);
+    char param[25];
+    sprintf(param, "AT+HTTPDATA=%d,20000", strlen(request_body));
+    sendCommand(param);
+    ESP_LOGI(TAG, "%s", param);
+    ESP_LOGI(TAG, "%s", request_body);
+    sendCommand(request_body);
+    sendCommand("AT+HTTPACTION=1");
+}
 
 void app_main(void) {
     init_led();
     init_hall_sensor();
     init_compass();
+    configureUART();
+    turnOnSim800l();
 
-    while (0) {
-        int hall_sensor_on = gpio_get_level(12) == 0;
-        if (gpio12state != hall_sensor_on) {
-            gpio_set_level(BLINK_GPIO, hall_sensor_on);
-            gpio12state = hall_sensor_on;
-            if (gpio12state == 0) {
-                int64_t time = esp_timer_get_time();
-                if (prevTickMs != 0) {
-                    float freq = 1 / ((float)(time - prevTickMs) / 1000000);
-                    ESP_LOGI(TAG, "frequency is %f hz", freq);
-                }
-                prevTickMs = time;
-            }
-            ESP_LOGI(TAG, "Hall sensor is %s!", hall_sensor_on ? "ON" : "OFF");
-        }
-        vTaskDelay(5);
-    }
+    float wind_speed = get_wind_speed();
+    uint8_t azimuth = get_azimuth();
+    uint8_t temp = get_temp();
 
-    int16_t azimuth;
-    int16_t temp;
-    while (1) {
-        qmc5883l_get_azimuth(&compass_settings, &azimuth);
-        qmc5883l_get_temp(&compass_settings, &temp);
-        ESP_LOGI(TAG, "azimuth = %d temp = %d", azimuth, temp);
-        vTaskDelay(50);
-    }
+    send_metrics(5.5f, 240, 27);
 }
