@@ -57,6 +57,14 @@ void turnOnSim800l() {
     ESP_LOGI(TAG, "SIM800L is turned ON!");
 }
 
+void turnOffSim800l() {
+    gpio_set_level(PWR_KEY_PIN, 0);
+    vTaskDelay(1100 / portTICK_RATE_MS);
+    gpio_set_level(PWR_KEY_PIN, 1);
+
+    ESP_LOGI(TAG, "SIM800L is turned OFF!");
+}
+
 void sendCommand(char *cmd) {
     uart_flush(uart_num);
     uart_write_bytes(UART_NUM, (const char *) cmd, strlen(cmd));

@@ -5,8 +5,8 @@
 #include "esp_log.h"
 #include "sdkconfig.h"
 #include <driver/i2c.h>
-#include <driver/uart.h>
 #include <string.h>
+#include <driver/adc.h>
 #include "qmc5883l.h"
 #include "sim800l.h"
 
@@ -19,9 +19,6 @@ static const char *TAG = "example";
 #define HALL_GPIO GPIO_NUM_12
 #define GPIO_SDA GPIO_NUM_21
 #define GPIO_SCL GPIO_NUM_22
-
-static uint8_t gpio12state = 0;
-static int64_t prevTickMs = 0;
 
 // калибровки компаса
 static uint8_t X_OFFSET = 150;
@@ -104,7 +101,7 @@ static void init_compass(void) {
     ESP_LOGI(TAG, "Compass set successfully");
 }
 
-void send_metrics(float wind_speed, int azimuth, int temperature) {
+void send_metrics(float wind_speed, int azimuth, int temperature, float voltage) {
     sendCommand("ATZ");
     sendCommand("AT+SAPBR=3,1,\"CONTYPE\",\"GPRS\"");
     sendCommand("AT+SAPBR=3,1,\"APN\",\"internet.mts.ru\"");
@@ -115,7 +112,7 @@ void send_metrics(float wind_speed, int azimuth, int temperature) {
     sendCommand("AT+HTTPPARA=\"URL\",\"http://193.124.125.33/metrics\"");
     sendCommand("AT+HTTPPARA=\"CONTENT\",\"application/json\"");
     char request_body[100];
-    sprintf(request_body, "{\"s\":%.1f,\"a\":%d,\"t\":%d}", wind_speed, azimuth, temperature);
+    sprintf(request_body, "{\"s\":%.1f,\"a\":%d,\"t\":%d,\"v\":%.1f}", wind_speed, azimuth, temperature, voltage);
     char param[25];
     sprintf(param, "AT+HTTPDATA=%d,20000", strlen(request_body));
     sendCommand(param);
@@ -135,6 +132,8 @@ void app_main(void) {
     float wind_speed = get_wind_speed();
     uint8_t azimuth = get_azimuth();
     uint8_t temp = get_temp();
+    float voltage = 3.2 * adc1_get_raw(ADC1_CHANNEL_0) / 4069;
 
-    send_metrics(5.5f, 240, 27);
+    send_metrics(5.5f, 240, 27, 3.2f);
+    turnOffSim800l();
 }
