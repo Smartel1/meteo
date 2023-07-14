@@ -44,6 +44,7 @@ void configureUART() {
 }
 
 void turnOnSim800l() {
+    ESP_LOGI(TAG, "Turning on SIM800L");
     gpio_set_direction(PWR_ON_PIN, GPIO_MODE_OUTPUT);
     gpio_set_level(PWR_ON_PIN, 1);
     gpio_set_direction(PWR_KEY_PIN, GPIO_MODE_OUTPUT);

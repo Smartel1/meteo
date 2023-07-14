@@ -7,10 +7,11 @@
 #include <driver/i2c.h>
 #include <string.h>
 #include <driver/adc.h>
+#include <esp_sleep.h>
 #include "qmc5883l.h"
 #include "sim800l.h"
 
-static const char *TAG = "example";
+static const char *TAG = "meteo";
 
 /* Use project configuration menu (idf.py menuconfig) to choose the GPIO to blink,
    or you can edit the following line and set a number here.
@@ -58,7 +59,7 @@ static float get_wind_speed(void) {
         vTaskDelay(1);
     }
     ESP_LOGI(TAG, "Rounds made in 5 sec: %d", rounds_count);
-    return rounds_count;
+    return rounds_count; //todo подставить коэффициент
 }
 
 static uint8_t get_azimuth(void) {
@@ -73,6 +74,12 @@ static uint8_t get_temp(void) {
     qmc5883l_get_temp(&compass_settings, &temp);
     ESP_LOGI(TAG, "temp = %d", temp);
     return temp;
+}
+
+static float get_voltage(void) {
+    float voltage = 3.2f * adc1_get_raw(ADC1_CHANNEL_0) / 4069;
+    ESP_LOGI(TAG, "voltage = %.1f", voltage);
+    return voltage;
 }
 
 static void init_compass(void) {
@@ -127,13 +134,21 @@ void app_main(void) {
     init_hall_sensor();
     init_compass();
     configureUART();
-    turnOnSim800l();
+    esp_sleep_enable_timer_wakeup(5*60*1000*1000); // wake up every 5 minutes
 
-    float wind_speed = get_wind_speed();
-    uint8_t azimuth = get_azimuth();
-    uint8_t temp = get_temp();
-    float voltage = 3.2 * adc1_get_raw(ADC1_CHANNEL_0) / 4069;
+    while (1) {
+        ESP_LOGI(TAG, "Waking up");
+        turnOnSim800l();
 
-    send_metrics(5.5f, 240, 27, 3.2f);
-    turnOffSim800l();
+        float wind_speed = get_wind_speed();
+        uint8_t azimuth = get_azimuth();
+        uint8_t temp = get_temp();
+        float voltage = get_voltage();
+
+        send_metrics(wind_speed, azimuth, temp, voltage);
+        turnOffSim800l();
+
+        ESP_LOGI(TAG, "Going down for 5 min");
+        esp_deep_sleep_start();
+    }
 }
