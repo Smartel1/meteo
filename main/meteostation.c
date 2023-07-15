@@ -21,11 +21,15 @@ static const char *TAG = "meteo";
 #define GPIO_SDA GPIO_NUM_21
 #define GPIO_SCL GPIO_NUM_22
 
+#define portTICK_RATE_MS     ( (TickType_t) 1000 / configTICK_RATE_HZ )
+
 // калибровки компаса
 static uint8_t X_OFFSET = 150;
 static float X_SCALE = 3.2f;
 static uint8_t Y_OFFSET = 185;
 static float Y_SCALE = 3.03f;
+
+static uint8_t hall_actuations = 0;
 
 static qmc5883l_settings compass_settings;
 
@@ -35,29 +39,28 @@ static void init_led(void) {
     gpio_set_direction(BLINK_GPIO, GPIO_MODE_OUTPUT);
 }
 
+void inrement_hall_actuations(void* arg) {
+    hall_actuations++;
+    static int led = 0;
+    gpio_set_level(BLINK_GPIO, !led);
+    led = !led;
+}
+
 static void init_hall_sensor(void) {
     gpio_reset_pin(HALL_GPIO);
-    /* Set the GPIO as a push/pull output */
     gpio_set_direction(HALL_GPIO, GPIO_MODE_INPUT);
-    gpio_pullup_en(HALL_GPIO);
+    gpio_set_pull_mode(HALL_GPIO, GPIO_PULLUP_ONLY);
+    gpio_set_intr_type(HALL_GPIO, GPIO_INTR_NEGEDGE);
+    gpio_intr_enable(HALL_GPIO);
+    gpio_install_isr_service(0);
+    gpio_isr_handler_add(HALL_GPIO, inrement_hall_actuations, NULL);
 }
 
 static float get_wind_speed(void) {
     ESP_LOGI(TAG, "Measuring wind speed");
-    uint8_t rounds_count = 0;
-    bool prev_tick_hall_sensor_on = 0;
-    int64_t start_measurement_time = esp_timer_get_time();
-    while (esp_timer_get_time() - start_measurement_time < 5000000) {
-        bool current_tick_hall_sensor_on = gpio_get_level(12) == 0;
-        if (prev_tick_hall_sensor_on != current_tick_hall_sensor_on) {
-            gpio_set_level(BLINK_GPIO, current_tick_hall_sensor_on);
-            prev_tick_hall_sensor_on = current_tick_hall_sensor_on;
-            if (prev_tick_hall_sensor_on) {
-                rounds_count++;
-            }
-        }
-        vTaskDelay(1);
-    }
+    uint8_t prev_hall_actuations = hall_actuations;
+    vTaskDelay(5000 / portTICK_RATE_MS);
+    uint8_t rounds_count = hall_actuations - prev_hall_actuations;
     ESP_LOGI(TAG, "Rounds made in 5 sec: %d", rounds_count);
     return rounds_count; //todo подставить коэффициент
 }
@@ -134,21 +137,18 @@ void app_main(void) {
     init_hall_sensor();
     init_compass();
     configureUART();
-    esp_sleep_enable_timer_wakeup(5*60*1000*1000); // wake up every 5 minutes
 
-    while (1) {
-        ESP_LOGI(TAG, "Waking up");
-        turnOnSim800l();
+    turnOnSim800l();
 
-        float wind_speed = get_wind_speed();
-        uint8_t azimuth = get_azimuth();
-        uint8_t temp = get_temp();
-        float voltage = get_voltage();
+    float wind_speed = get_wind_speed();
+    uint8_t azimuth = get_azimuth();
+    uint8_t temp = get_temp();
+    float voltage = get_voltage();
 
-        send_metrics(wind_speed, azimuth, temp, voltage);
-        turnOffSim800l();
+    send_metrics(wind_speed, azimuth, temp, voltage);
+    turnOffSim800l();
 
-        ESP_LOGI(TAG, "Going down for 5 min");
-        esp_deep_sleep_start();
-    }
+    esp_sleep_enable_timer_wakeup(5*60*1000*1000); // wake up in 5 minutes
+    ESP_LOGI(TAG, "Going down for 5 min");
+    esp_deep_sleep_start();
 }
