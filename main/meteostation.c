@@ -21,6 +21,9 @@ static const char *TAG = "meteo";
 #define GPIO_SDA GPIO_NUM_21
 #define GPIO_SCL GPIO_NUM_22
 
+#define DEVICE_ID 1
+#define MEASURING_INTERVAL 300000000 // 5 minutes
+
 #define portTICK_RATE_MS     ( (TickType_t) 1000 / configTICK_RATE_HZ )
 
 // калибровки компаса
@@ -29,7 +32,7 @@ static float X_SCALE = 3.2f;
 static uint8_t Y_OFFSET = 185;
 static float Y_SCALE = 3.03f;
 
-static uint8_t hall_actuations = 0;
+static uint8_t hall_transitions = 0;
 
 static qmc5883l_settings compass_settings;
 
@@ -39,8 +42,8 @@ static void init_led(void) {
     gpio_set_direction(BLINK_GPIO, GPIO_MODE_OUTPUT);
 }
 
-void inrement_hall_actuations(void* arg) {
-    hall_actuations++;
+void increment_hall_transitions(void* arg) {
+    hall_transitions++;
     static int led = 0;
     gpio_set_level(BLINK_GPIO, !led);
     led = !led;
@@ -50,17 +53,18 @@ static void init_hall_sensor(void) {
     gpio_reset_pin(HALL_GPIO);
     gpio_set_direction(HALL_GPIO, GPIO_MODE_INPUT);
     gpio_set_pull_mode(HALL_GPIO, GPIO_PULLUP_ONLY);
-    gpio_set_intr_type(HALL_GPIO, GPIO_INTR_NEGEDGE);
+    // ISR is being invoked 2 times a round
+    gpio_set_intr_type(HALL_GPIO, GPIO_INTR_ANYEDGE);
     gpio_intr_enable(HALL_GPIO);
     gpio_install_isr_service(0);
-    gpio_isr_handler_add(HALL_GPIO, inrement_hall_actuations, NULL);
+    gpio_isr_handler_add(HALL_GPIO, increment_hall_transitions, NULL);
 }
 
 static float get_wind_speed(void) {
     ESP_LOGI(TAG, "Measuring wind speed");
-    uint8_t prev_hall_actuations = hall_actuations;
+    uint8_t prev_hall_transitions = hall_transitions;
     vTaskDelay(5000 / portTICK_RATE_MS);
-    uint8_t rounds_count = hall_actuations - prev_hall_actuations;
+    uint8_t rounds_count = (hall_transitions - prev_hall_transitions) / 2;
     ESP_LOGI(TAG, "Rounds made in 5 sec: %d", rounds_count);
     return rounds_count; //todo подставить коэффициент
 }
@@ -120,9 +124,9 @@ void send_metrics(float wind_speed, int azimuth, int temperature, float voltage)
     sendCommand("AT+HTTPINIT");
     sendCommand("AT+HTTPPARA=\"CID\",1");
     sendCommand("AT+HTTPPARA=\"URL\",\"http://193.124.125.33/metrics\"");
-    sendCommand("AT+HTTPPARA=\"CONTENT\",\"application/json\"");
+    sendCommand("AT+HTTPPARA=\"CONTENT\",\"text/plain\"");
     char request_body[100];
-    sprintf(request_body, "{\"s\":%.1f,\"a\":%d,\"t\":%d,\"v\":%.1f}", wind_speed, azimuth, temperature, voltage);
+    sprintf(request_body, "%d %.1f %d %d %.1f", DEVICE_ID, wind_speed, azimuth, temperature, voltage);
     char param[25];
     sprintf(param, "AT+HTTPDATA=%d,20000", strlen(request_body));
     sendCommand(param);
@@ -148,7 +152,7 @@ void app_main(void) {
     send_metrics(wind_speed, azimuth, temp, voltage);
     turnOffSim800l();
 
-    esp_sleep_enable_timer_wakeup(5*60*1000*1000); // wake up in 5 minutes
+    esp_sleep_enable_timer_wakeup(MEASURING_INTERVAL);
     ESP_LOGI(TAG, "Going down for 5 min");
     esp_deep_sleep_start();
 }
