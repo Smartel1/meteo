@@ -64,7 +64,7 @@ static float get_wind_speed(void) {
     ESP_LOGI(TAG, "Measuring wind speed");
     uint8_t prev_hall_transitions = hall_transitions;
     vTaskDelay(5000 / portTICK_RATE_MS);
-    uint8_t rounds_count = (hall_transitions - prev_hall_transitions) / 2;
+    uint8_t rounds_count = (hall_transitions - prev_hall_transitions) / 4; // 2 on and 2 offs per round
     ESP_LOGI(TAG, "Rounds made in 5 sec: %d", rounds_count);
     return rounds_count; //todo подставить коэффициент
 }
