@@ -22,6 +22,7 @@ static const char *TAG = "meteo";
 #define GPIO_SCL GPIO_NUM_22
 
 #define DEVICE_ID 1
+#define SERVER_ADDRESS "193.124.125.33"
 #define MEASURING_INTERVAL 300000000 // 5 minutes
 
 #define portTICK_RATE_MS     ( (TickType_t) 1000 / configTICK_RATE_HZ )
@@ -123,10 +124,12 @@ void send_metrics(float wind_speed, int azimuth, int temperature, float voltage)
     sendCommand("AT+SAPBR=2,1");
     sendCommand("AT+HTTPINIT");
     sendCommand("AT+HTTPPARA=\"CID\",1");
-    sendCommand("AT+HTTPPARA=\"URL\",\"http://193.124.125.33/metrics\"");
+    char url_cmd[100];
+    sprintf(url_cmd, "AT+HTTPPARA=\"URL\",\"http://%s/spots/%d/metrics\"", SERVER_ADDRESS, DEVICE_ID);
+    sendCommand(url_cmd);
     sendCommand("AT+HTTPPARA=\"CONTENT\",\"text/plain\"");
     char request_body[100];
-    sprintf(request_body, "%d %.1f %d %d %.1f", DEVICE_ID, wind_speed, azimuth, temperature, voltage);
+    sprintf(request_body, "%.1f %d %d %.1f", wind_speed, azimuth, temperature, voltage);
     char param[25];
     sprintf(param, "AT+HTTPDATA=%d,20000", strlen(request_body));
     sendCommand(param);
