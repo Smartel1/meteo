@@ -23,7 +23,7 @@ static const char *TAG = "meteo";
 
 #define DEVICE_ID 1
 #define SERVER_ADDRESS "193.124.125.33"
-#define MEASURING_INTERVAL 300000000 // 5 minutes
+#define MEASURING_INTERVAL 60000000 // 1 minute - todo change to 5 min
 
 #define portTICK_RATE_MS     ( (TickType_t) 1000 / configTICK_RATE_HZ )
 
@@ -41,6 +41,13 @@ static void init_led(void) {
     gpio_reset_pin(BLINK_GPIO);
     /* Set the GPIO as a push/pull output */
     gpio_set_direction(BLINK_GPIO, GPIO_MODE_OUTPUT);
+}
+
+static void blink(void) {
+    gpio_set_level(BLINK_GPIO, 1);
+    vTaskDelay(5);
+    gpio_set_level(BLINK_GPIO, 0);
+    vTaskDelay(5);
 }
 
 void increment_hall_transitions(void* arg) {
@@ -85,7 +92,7 @@ static uint8_t get_temp(void) {
 }
 
 static float get_voltage(void) {
-    float voltage = 3.2f * adc1_get_raw(ADC1_CHANNEL_0) / 4069;
+    float voltage = (float) adc1_get_raw(ADC1_CHANNEL_7) / 386.0;
     ESP_LOGI(TAG, "voltage = %.1f", voltage);
     return voltage;
 }
@@ -141,11 +148,19 @@ void send_metrics(float wind_speed, int azimuth, int temperature, float voltage)
 
 void app_main(void) {
     init_led();
+    blink();
+
     init_hall_sensor();
+    blink();
+
     init_compass();
+    blink();
+
     configureUART();
+    blink();
 
     turnOnSim800l();
+    blink();
 
     float wind_speed = get_wind_speed();
     uint8_t azimuth = get_azimuth();

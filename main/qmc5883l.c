@@ -75,7 +75,7 @@ bool qmc5883l_get_azimuth(qmc5883l_settings *settings, int16_t *angle) {
     qmc5883l_data_t compass_data;
     qmc5883l_get_data(settings, &compass_data);
     int a = atan2((compass_data.x + settings->x_offset) * settings->x_scale,
-                  (compass_data.y + settings->y_offset) * settings->y_scale) * 180.0 / 3.14;
+                  (compass_data.z + settings->y_offset) * settings->y_scale) * 180.0 / 3.14;
     a = a < 0 ? 360 + a : a;
     *angle=a;
     return true;
