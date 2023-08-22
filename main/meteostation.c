@@ -10,6 +10,7 @@
 #include <esp_sleep.h>
 #include "qmc5883l.h"
 #include "sim800l.h"
+#include "bmp280.h"
 
 static const char *TAG = "meteo";
 
@@ -24,8 +25,6 @@ static const char *TAG = "meteo";
 #define DEVICE_ID 1
 #define SERVER_ADDRESS "193.124.125.33"
 #define MEASURING_INTERVAL 60000000 // 1 minute - todo change to 5 min
-
-#define portTICK_RATE_MS     ( (TickType_t) 1000 / configTICK_RATE_HZ )
 
 // калибровки компаса
 static uint8_t X_OFFSET = 150;
@@ -71,7 +70,7 @@ static void init_hall_sensor(void) {
 static float get_wind_speed(void) {
     ESP_LOGI(TAG, "Measuring wind speed");
     uint8_t prev_hall_transitions = hall_transitions;
-    vTaskDelay(5000 / portTICK_RATE_MS);
+    vTaskDelay(5000 / portTICK_PERIOD_MS);
     uint8_t rounds_count = (hall_transitions - prev_hall_transitions) / 4; // 2 on and 2 offs per round
     ESP_LOGI(TAG, "Rounds made in 5 sec: %d", rounds_count);
     return rounds_count; //todo подставить коэффициент
@@ -84,17 +83,45 @@ static uint8_t get_azimuth(void) {
     return azimuth;
 }
 
-static uint8_t get_temp(void) {
-    int16_t temp;
-    qmc5883l_get_temp(&compass_settings, &temp);
-    ESP_LOGI(TAG, "temp = %d", temp);
-    return temp;
-}
-
 static float get_voltage(void) {
     float voltage = (float) adc1_get_raw(ADC1_CHANNEL_7) / 386.0;
     ESP_LOGI(TAG, "voltage = %.1f", voltage);
     return voltage;
+}
+
+static void get_pressure_and_temperature(float *pressure, float *temperature) {
+    bmp280_params_t params;
+    bmp280_init_default_params(&params);
+    bmp280_t dev;
+
+    esp_err_t res;
+
+    while (i2cdev_init() != ESP_OK)
+    {
+        printf("Could not init I2Cdev library\n");
+        vTaskDelay(250 / portTICK_PERIOD_MS);
+    }
+
+    while (bmp280_init_desc(&dev, BMP280_I2C_ADDRESS_0, 0, GPIO_SDA, GPIO_SCL) != ESP_OK)
+    {
+        printf("Could not init device descriptor\n");
+        vTaskDelay(250 / portTICK_PERIOD_MS);
+    }
+
+    while ((res = bmp280_init(&dev, &params)) != ESP_OK)
+    {
+        printf("Could not init BMP280, err: %d\n", res);
+        vTaskDelay(250 / portTICK_PERIOD_MS);
+    }
+
+    float humidity; // humidity is not present on bmp280
+
+    if (bmp280_read_float(&dev, temperature, pressure, &humidity) != ESP_OK)
+    {
+        printf("Temperature/pressure reading failed\n");
+    }
+
+    printf("Pressure: %.2f Pa, Temperature: %.2f C\n", *pressure, *temperature);
 }
 
 static void init_compass(void) {
@@ -123,7 +150,7 @@ static void init_compass(void) {
     ESP_LOGI(TAG, "Compass set successfully");
 }
 
-void send_metrics(float wind_speed, int azimuth, int temperature, float voltage) {
+void send_metrics(float wind_speed, int azimuth, float temperature, float voltage, float pressure) {
     sendCommand("ATZ");
     sendCommand("AT+SAPBR=3,1,\"CONTYPE\",\"GPRS\"");
     sendCommand("AT+SAPBR=3,1,\"APN\",\"internet.mts.ru\"");
@@ -136,7 +163,7 @@ void send_metrics(float wind_speed, int azimuth, int temperature, float voltage)
     sendCommand(url_cmd);
     sendCommand("AT+HTTPPARA=\"CONTENT\",\"text/plain\"");
     char request_body[100];
-    sprintf(request_body, "%.1f %d %d %.1f", wind_speed, azimuth, temperature, voltage);
+    sprintf(request_body, "%.1f %d %.0f %.1f %.1f", wind_speed, azimuth, temperature, voltage, pressure);
     char param[25];
     sprintf(param, "AT+HTTPDATA=%d,20000", strlen(request_body));
     sendCommand(param);
@@ -164,10 +191,11 @@ void app_main(void) {
 
     float wind_speed = get_wind_speed();
     uint8_t azimuth = get_azimuth();
-    uint8_t temp = get_temp();
     float voltage = get_voltage();
+    float pressure, temperature;
+    get_pressure_and_temperature(&pressure, &temperature);
 
-    send_metrics(wind_speed, azimuth, temp, voltage);
+    send_metrics(wind_speed, azimuth, temperature, voltage, pressure);
     turnOffSim800l();
 
     esp_sleep_enable_timer_wakeup(MEASURING_INTERVAL);

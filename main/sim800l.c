@@ -17,8 +17,6 @@
 #define UART_NUM             UART_NUM_1
 #define UART_BAUD            38400
 
-#define portTICK_RATE_MS     ( (TickType_t) 1000 / configTICK_RATE_HZ )
-
 
 static const char *TAG = "[SIM800L DRIVER]";
 
@@ -49,18 +47,18 @@ void turnOnSim800l() {
     gpio_set_level(PWR_ON_PIN, 1);
     gpio_set_direction(PWR_KEY_PIN, GPIO_MODE_OUTPUT);
     gpio_set_level(PWR_KEY_PIN, 1);
-    vTaskDelay(20 / portTICK_RATE_MS);
+    vTaskDelay(20 / portTICK_PERIOD_MS);
     gpio_set_level(PWR_KEY_PIN, 0);
-    vTaskDelay(1100 / portTICK_RATE_MS);
+    vTaskDelay(1100 / portTICK_PERIOD_MS);
     gpio_set_level(PWR_KEY_PIN, 1);
-    vTaskDelay(3500 / portTICK_RATE_MS);
+    vTaskDelay(3500 / portTICK_PERIOD_MS);
 
     ESP_LOGI(TAG, "SIM800L is turned ON!");
 }
 
 void turnOffSim800l() {
     gpio_set_level(PWR_KEY_PIN, 0);
-    vTaskDelay(1100 / portTICK_RATE_MS);
+    vTaskDelay(1100 / portTICK_PERIOD_MS);
     gpio_set_level(PWR_KEY_PIN, 1);
 
     ESP_LOGI(TAG, "SIM800L is turned OFF!");
@@ -69,13 +67,13 @@ void turnOffSim800l() {
 void sendCommand(char *cmd) {
     uart_flush(uart_num);
     uart_write_bytes(UART_NUM, (const char *) cmd, strlen(cmd));
-    uart_wait_tx_done(UART_NUM, 100 / portTICK_RATE_MS);
+    uart_wait_tx_done(UART_NUM, 100 / portTICK_PERIOD_MS);
     uart_write_bytes(UART_NUM, "\r\n", 2);
-    uart_wait_tx_done(UART_NUM, 150 / portTICK_RATE_MS);
+    uart_wait_tx_done(UART_NUM, 150 / portTICK_PERIOD_MS);
 
     char response_buf[100] = {""};
     int response_len = uart_read_bytes(UART_NUM, (uint8_t *) response_buf, sizeof response_buf,
-                                       2000 / portTICK_RATE_MS);
+                                       2000 / portTICK_PERIOD_MS);
     response_buf[response_len] = '\0';
     ESP_LOGI(TAG, "len = %d", response_len);
     ESP_LOGI(TAG, "%s", response_buf);
