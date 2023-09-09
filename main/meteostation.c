@@ -10,7 +10,7 @@
 #include <esp_sleep.h>
 #include "qmc5883l.h"
 #include "sim800l.h"
-#include "bmp280.h"
+#include "bmx280.h"
 
 static const char *TAG = "meteo";
 
@@ -19,12 +19,19 @@ static const char *TAG = "meteo";
 */
 #define BLINK_GPIO CONFIG_BLINK_GPIO
 #define HALL_GPIO GPIO_NUM_12
+#define I2C_PORT 0
 #define GPIO_SDA GPIO_NUM_21
 #define GPIO_SCL GPIO_NUM_22
+#define IP5306_ADDR 0x75 // Адрес устройства IP5306
+#define IP5306_REG_SYS_CTL0 0x00 // Регистр IP5306_SYS_CTL0
 
 #define DEVICE_ID 1
 #define SERVER_ADDRESS "193.124.125.33"
 #define MEASURING_INTERVAL 60000000 // 1 minute - todo change to 5 min
+
+#define portTICK_RATE_MS     ( (TickType_t) 1000 / configTICK_RATE_HZ )
+
+bmx280_t *bmx280;
 
 // калибровки компаса
 static uint8_t X_OFFSET = 150;
@@ -49,6 +56,16 @@ static void blink(void) {
     vTaskDelay(5);
 }
 
+void configure_ip5306() {
+    uint8_t config = 0b10111110;
+    uint8_t packet[2] = {IP5306_REG_SYS_CTL0, config};
+    ESP_ERROR_CHECK(i2c_master_write_to_device(
+            I2C_PORT,
+            IP5306_ADDR,
+            packet, 2,
+            10));
+}
+
 void increment_hall_transitions(void* arg) {
     hall_transitions++;
     static int led = 0;
@@ -70,7 +87,7 @@ static void init_hall_sensor(void) {
 static float get_wind_speed(void) {
     ESP_LOGI(TAG, "Measuring wind speed");
     uint8_t prev_hall_transitions = hall_transitions;
-    vTaskDelay(5000 / portTICK_PERIOD_MS);
+    vTaskDelay(5000 / portTICK_RATE_MS);
     uint8_t rounds_count = (hall_transitions - prev_hall_transitions) / 4; // 2 on and 2 offs per round
     ESP_LOGI(TAG, "Rounds made in 5 sec: %d", rounds_count);
     return rounds_count; //todo подставить коэффициент
@@ -89,43 +106,7 @@ static float get_voltage(void) {
     return voltage;
 }
 
-static void get_pressure_and_temperature(float *pressure, float *temperature) {
-    bmp280_params_t params;
-    bmp280_init_default_params(&params);
-    bmp280_t dev;
-
-    esp_err_t res;
-
-    while (i2cdev_init() != ESP_OK)
-    {
-        printf("Could not init I2Cdev library\n");
-        vTaskDelay(250 / portTICK_PERIOD_MS);
-    }
-
-    while (bmp280_init_desc(&dev, BMP280_I2C_ADDRESS_0, 0, GPIO_SDA, GPIO_SCL) != ESP_OK)
-    {
-        printf("Could not init device descriptor\n");
-        vTaskDelay(250 / portTICK_PERIOD_MS);
-    }
-
-    while ((res = bmp280_init(&dev, &params)) != ESP_OK)
-    {
-        printf("Could not init BMP280, err: %d\n", res);
-        vTaskDelay(250 / portTICK_PERIOD_MS);
-    }
-
-    float humidity; // humidity is not present on bmp280
-
-    if (bmp280_read_float(&dev, temperature, pressure, &humidity) != ESP_OK)
-    {
-        printf("Temperature/pressure reading failed\n");
-    }
-
-    printf("Pressure: %.2f Pa, Temperature: %.2f C\n", *pressure, *temperature);
-}
-
-static void init_compass(void) {
-    int i2c_master_port = 0;
+static void init_i2c(void) {
     i2c_config_t conf = {
             .mode = I2C_MODE_MASTER,
             .sda_io_num = GPIO_SDA,         // select SDA GPIO specific to your project
@@ -134,12 +115,14 @@ static void init_compass(void) {
             .scl_pullup_en = GPIO_PULLUP_ENABLE,
             .master.clk_speed = 400000
     };
-    ESP_ERROR_CHECK(i2c_param_config(i2c_master_port, &conf));
-    ESP_ERROR_CHECK(i2c_driver_install(i2c_master_port, I2C_MODE_MASTER, 0, 0, 0));
+    ESP_ERROR_CHECK(i2c_param_config(I2C_PORT, &conf));
+    ESP_ERROR_CHECK(i2c_driver_install(I2C_PORT, I2C_MODE_MASTER, 0, 0, 0));
     ESP_LOGI(TAG, "I2C initialized successfully");
+}
 
+static void init_compass(void) {
     qmc5883l_settings compass_settings_obj = {
-            .port = i2c_master_port,
+            .port = I2C_PORT,
             .x_offset = X_OFFSET,
             .x_scale = X_SCALE,
             .y_offset = Y_OFFSET,
@@ -150,7 +133,33 @@ static void init_compass(void) {
     ESP_LOGI(TAG, "Compass set successfully");
 }
 
-void send_metrics(float wind_speed, int azimuth, float temperature, float voltage, float pressure) {
+static void init_bmp280(void) {
+    bmx280 = bmx280_create(I2C_PORT);
+    if (!bmx280) {
+        ESP_LOGE("test", "Could not create bmx280 driver.");
+        return;
+    }
+
+    ESP_ERROR_CHECK(bmx280_init(bmx280));
+    bmx280_config_t bmx_cfg = BMX280_DEFAULT_CONFIG;
+    ESP_ERROR_CHECK(bmx280_configure(bmx280, &bmx_cfg));
+    ESP_ERROR_CHECK(bmx280_setMode(bmx280, BMX280_MODE_FORCE));
+    do {
+        vTaskDelay(pdMS_TO_TICKS(1));
+    } while (bmx280_isSampling(bmx280));
+}
+
+static void get_pressure_and_temperature(int *pressure, int *temperature) {
+    float btemp = 0, bpres = 0, hum = 0;
+    ESP_ERROR_CHECK(bmx280_readoutFloat(bmx280, &btemp, &bpres, &hum));
+
+    ESP_LOGI(TAG, "Read Values: temp = %f, pres = %f", btemp, bpres);
+
+    *pressure = bpres / 133.3; // Преобразование из Pa в мм рт ст
+    *temperature = btemp;
+}
+
+void send_metrics(float wind_speed, int azimuth, int temperature, float voltage, int pressure) {
     sendCommand("ATZ");
     sendCommand("AT+SAPBR=3,1,\"CONTYPE\",\"GPRS\"");
     sendCommand("AT+SAPBR=3,1,\"APN\",\"internet.mts.ru\"");
@@ -163,7 +172,7 @@ void send_metrics(float wind_speed, int azimuth, float temperature, float voltag
     sendCommand(url_cmd);
     sendCommand("AT+HTTPPARA=\"CONTENT\",\"text/plain\"");
     char request_body[100];
-    sprintf(request_body, "%.1f %d %.0f %.1f %.1f", wind_speed, azimuth, temperature, voltage, pressure);
+    sprintf(request_body, "%.1f %d %d %.1f %d", wind_speed, azimuth, temperature, voltage, pressure);
     char param[25];
     sprintf(param, "AT+HTTPDATA=%d,20000", strlen(request_body));
     sendCommand(param);
@@ -180,7 +189,16 @@ void app_main(void) {
     init_hall_sensor();
     blink();
 
+    init_i2c();
+    blink();
+
+    configure_ip5306();
+    blink();
+
     init_compass();
+    blink();
+
+    init_bmp280();
     blink();
 
     configureUART();
@@ -192,7 +210,8 @@ void app_main(void) {
     float wind_speed = get_wind_speed();
     uint8_t azimuth = get_azimuth();
     float voltage = get_voltage();
-    float pressure, temperature;
+
+    int pressure, temperature;
     get_pressure_and_temperature(&pressure, &temperature);
 
     send_metrics(wind_speed, azimuth, temperature, voltage, pressure);

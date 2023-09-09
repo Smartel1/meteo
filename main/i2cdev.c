@@ -16,6 +16,9 @@ static const char *TAG = "I2C_DEV";
 static SemaphoreHandle_t locks[I2C_NUM_MAX] = { 0 };
 static i2c_config_t configs[I2C_NUM_MAX];
 
+#define CONFIG_I2CDEV_TIMEOUT 5000 // Значение в миллисекундах
+#define portTICK_RATE_MS     ( (TickType_t) 1000 / configTICK_RATE_HZ )
+
 #define SEMAPHORE_TAKE(port) do { \
         if (!xSemaphoreTake(locks[port], CONFIG_I2CDEV_TIMEOUT / portTICK_RATE_MS)) \
         { \
