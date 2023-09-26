@@ -1,10 +1,10 @@
 dependencies:
   espressif/esp_modem:
-    component_hash: db634499298a3335367039b07838e9fcc1dd44e8c44bb67c2a6d7cc26b6d8ca4
+    component_hash: d595d4522df76a2154dd5128828f8989c5cd7f8b9a088813a0d19abff063ac4c
     source:
       service_url: https://api.components.espressif.com/
       type: service
-    version: 1.0.1
+    version: 1.0.2
   espressif/led_strip:
     component_hash: c240f82567a37357bef313f76b0df93cb2da025835e525006096ea7e0fd61b4f
     source:
@@ -16,6 +16,6 @@ dependencies:
     source:
       type: idf
     version: 5.2.0
-manifest_hash: 764e6ee99e66966f43b61140509a26824416006fa28b9a9532db4583d06f6e2e
+manifest_hash: 8b6ffdc24a14cf159e6f4cde70474c3c6fee1831869985c9a58d391a9c01e14b
 target: esp32
 version: 1.0.0

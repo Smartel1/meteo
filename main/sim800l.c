@@ -64,7 +64,7 @@ void turnOffSim800l() {
     ESP_LOGI(TAG, "SIM800L is turned OFF!");
 }
 
-void sendCommand(char *cmd) {
+int sendCommand(char *cmd, char *ok_response) {
     uart_flush(uart_num);
     uart_write_bytes(UART_NUM, (const char *) cmd, strlen(cmd));
     uart_wait_tx_done(UART_NUM, 100 / portTICK_PERIOD_MS);
@@ -72,11 +72,19 @@ void sendCommand(char *cmd) {
     uart_wait_tx_done(UART_NUM, 150 / portTICK_PERIOD_MS);
 
     char response_buf[100] = {""};
-    int response_len = uart_read_bytes(UART_NUM, (uint8_t *) response_buf, sizeof response_buf,
+    int response_len = uart_read_bytes(UART_NUM, (uint8_t *) response_buf, strlen(ok_response),
                                        2000 / portTICK_PERIOD_MS);
     response_buf[response_len] = '\0';
-    ESP_LOGI(TAG, "len = %d", response_len);
-    ESP_LOGI(TAG, "%s", response_buf);
+    ESP_LOGI(TAG, "resp: %s", response_buf);
+    bool ok = strcmp(response_buf, ok_response) == 0;
+    if (!ok) {
+        ESP_LOGE(TAG, "command failed: %s", cmd);
+        uart_read_bytes(UART_NUM, (uint8_t *) response_buf, 100,
+                        2000 / portTICK_PERIOD_MS);
+        ESP_LOGE(TAG, "resp: %s", response_buf);
+    }
+    vTaskDelay(500 / portTICK_PERIOD_MS); //todo remove this line if everything is ok without it
+    return ok;
 }
 
 

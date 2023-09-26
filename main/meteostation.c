@@ -164,26 +164,26 @@ static void get_pressure_and_temperature(int *pressure, int *temperature) {
 }
 
 void send_metrics(float wind_speed, int azimuth, int temperature, float voltage, int pressure) {
-    sendCommand("ATZ");
-    sendCommand("AT+SAPBR=3,1,\"CONTYPE\",\"GPRS\"");
-    sendCommand("AT+SAPBR=3,1,\"APN\",\"internet.mts.ru\"");
-    sendCommand("AT+SAPBR=1,1");
-    sendCommand("AT+SAPBR=2,1");
-    sendCommand("AT+HTTPINIT");
-    sendCommand("AT+HTTPPARA=\"CID\",1");
+    if (!sendCommand("ATZ", "\r\nOK\r\n")) return;
+    if (!sendCommand("AT+SAPBR=3,1,\"CONTYPE\",\"GPRS\"", "\r\nOK\r\n")) return;
+    if (!sendCommand("AT+SAPBR=3,1,\"APN\",\"internet.mts.ru\"", "\r\nOK\r\n")) return;
+    if (!sendCommand("AT+SAPBR=1,1", "\r\nOK\r\n")) return;
+    if (!sendCommand("AT+SAPBR=2,1", "\r\nOK\r\n")) return;
+    if (!sendCommand("AT+HTTPINIT", "\r\nOK\r\n")) return;
+    if (!sendCommand("AT+HTTPPARA=\"CID\",1", "\r\nOK\r\n")) return;
     char url_cmd[100];
     sprintf(url_cmd, "AT+HTTPPARA=\"URL\",\"http://%s/spots/%d/metrics\"", SERVER_ADDRESS, DEVICE_ID);
-    sendCommand(url_cmd);
-    sendCommand("AT+HTTPPARA=\"CONTENT\",\"text/plain\"");
+    if (!sendCommand(url_cmd, "\r\nOK\r\n")) return;
+    if (!sendCommand("AT+HTTPPARA=\"CONTENT\",\"text/plain\"", "\r\nOK\r\n")) return;
     char request_body[100];
     sprintf(request_body, "%.1f %d %d %.1f %d", wind_speed, azimuth, temperature, voltage, pressure);
     char param[25];
     sprintf(param, "AT+HTTPDATA=%d,20000", strlen(request_body));
-    sendCommand(param);
+    if (!sendCommand(param, "\r\nDOWNLOAD\r\n")) return;
     ESP_LOGI(TAG, "%s", param);
     ESP_LOGI(TAG, "%s", request_body);
-    sendCommand(request_body);
-    sendCommand("AT+HTTPACTION=1");
+    if (!sendCommand(request_body, "\r\nOK\r\n")) return;
+    if (!sendCommand("AT+HTTPACTION=1", "\r\nOK\r\n")) return;
 }
 
 void app_main(void) {
