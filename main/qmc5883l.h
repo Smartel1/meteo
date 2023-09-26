@@ -65,10 +65,10 @@ typedef struct {
 
 typedef struct {
     uint8_t port; // номер логического порта
-    uint8_t x_offset; // офсет по Х (отклонение среднего значения от нуля)
+    int x_offset; // офсет по Х (отклонение среднего значения от нуля)
     float x_scale; // коэфф. для X (для приведения всех осей к одному модулю)
-    uint8_t y_offset; // офсет по Y (отклонение среднего значения от нуля)
-    float y_scale; // коэфф. для Y (для приведения всех осей к одному модулю)
+    int z_offset; // офсет по Z (отклонение среднего значения от нуля)
+    float z_scale; // коэфф. для Z (для приведения всех осей к одному модулю)
 } qmc5883l_settings;
 
 void qmc5883l_init(qmc5883l_settings *compass_address);
@@ -91,4 +91,5 @@ void qmc5883l_set_rate(qmc5883l_settings *compass_address, qmc5883l_rate_t rate)
 
 bool qmc5883l_get_data(qmc5883l_settings *compass_address, qmc5883l_data_t* data);
 bool qmc5883l_get_azimuth(qmc5883l_settings *compass_address, int16_t *angle);
+bool qmc5883l_calibrate(qmc5883l_settings *compass_address);
 bool qmc5883l_get_temp(qmc5883l_settings *compass_address, int16_t *temp);

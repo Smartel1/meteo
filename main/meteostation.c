@@ -34,10 +34,10 @@ static const char *TAG = "meteo";
 bmx280_t *bmx280;
 
 // калибровки компаса
-static uint8_t X_OFFSET = 150;
-static float X_SCALE = 3.2f;
-static uint8_t Y_OFFSET = 185;
-static float Y_SCALE = 3.03f;
+static int X_OFFSET = -191;
+static float X_SCALE = 0.87f;
+static int Z_OFFSET = 53;
+static float Z_SCALE = 1.17f;
 
 static uint8_t hall_transitions = 0;
 
@@ -93,6 +93,10 @@ static float get_wind_speed(void) {
     return rounds_count; //todo подставить коэффициент
 }
 
+static void calibrate_compass(void) {
+    qmc5883l_calibrate(&compass_settings);
+}
+
 static uint8_t get_azimuth(void) {
     int16_t azimuth;
     qmc5883l_get_azimuth(&compass_settings, &azimuth);
@@ -125,8 +129,8 @@ static void init_compass(void) {
             .port = I2C_PORT,
             .x_offset = X_OFFSET,
             .x_scale = X_SCALE,
-            .y_offset = Y_OFFSET,
-            .y_scale = Y_SCALE
+            .z_offset = Z_OFFSET,
+            .z_scale = Z_SCALE
     };
     compass_settings = compass_settings_obj;
     qmc5883l_init(&compass_settings);
@@ -196,6 +200,10 @@ void app_main(void) {
     blink();
 
     init_compass();
+// Use this function to calibrate compass (once before meteostation installation).
+// Uncomment this line, run the code and rotate the compass in XZ plane (couple of rounds).
+// Get offsets and scales from console and put them in X_OFFSET, Z_OFFSET, X_SCALE and Z_SCALE constants. Thats it!
+//    calibrate_compass();
     blink();
 
     init_bmp280();

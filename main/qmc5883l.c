@@ -1,6 +1,7 @@
 #include "qmc5883l.h"
 #include <driver/i2c.h>
 #include <math.h>
+#include <esp_log.h>
 
 void qmc5883l_init(qmc5883l_settings *settings) {
     qmc5883l_init_all(settings, NULL, NULL, NULL, NULL);
@@ -74,11 +75,53 @@ bool qmc5883l_get_data(qmc5883l_settings *settings, qmc5883l_data_t *data) {
 bool qmc5883l_get_azimuth(qmc5883l_settings *settings, int16_t *angle) {
     qmc5883l_data_t compass_data;
     qmc5883l_get_data(settings, &compass_data);
-    int a = atan2((compass_data.x + settings->x_offset) * settings->x_scale,
-                  (compass_data.z + settings->y_offset) * settings->y_scale) * 180.0 / 3.14;
+    int a = atan2((compass_data.z - settings->z_offset) * settings->z_scale,
+                  (compass_data.x - settings->x_offset) * settings->x_scale) * 180.0 / 3.14;
     a = a < 0 ? 360 + a : a;
     *angle=a;
     return true;
+}
+
+bool qmc5883l_calibrate(qmc5883l_settings *settings) {
+    qmc5883l_data_t compass_data;
+    int minx = 0;
+    int maxx = 0;
+    int minz = 0;
+    int maxz = 0;
+    bool changed = false;
+    while (true) {
+        qmc5883l_get_data(settings, &compass_data);
+
+        if (compass_data.x > maxx) {
+            maxx = compass_data.x;
+            changed = true;
+        }
+        if (compass_data.x < minx) {
+            minx = compass_data.x;
+            changed = true;
+        }
+        if (compass_data.z > maxz) {
+            maxz = compass_data.z;
+            changed = true;
+        }
+        if (compass_data.z < minz) {
+            minz = compass_data.z;
+            changed = true;
+        }
+
+        if (changed) {
+            int x_offset = (maxx + minx) / 2;
+            int z_offset = (maxz + minz) / 2;
+            int x_avg_delta = (maxx - minx) / 2;
+            int z_avg_delta = (maxz - minz) / 2;
+            int avg_delta = (x_avg_delta + z_avg_delta) / 2;
+            float x_scale = (float) avg_delta / (float) x_avg_delta;
+            float z_scale = (float) avg_delta / (float) z_avg_delta;
+            ESP_LOGI("calibration", "x_offset %d z_offset %d x_scale %.2f z_scale %.2f",
+                     x_offset, z_offset, x_scale, z_scale);
+            changed = false;
+        }
+    }
 }
 
 bool qmc5883l_get_temp(qmc5883l_settings *settings, int16_t *temp) {
