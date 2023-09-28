@@ -1,4 +1,5 @@
 #include <string.h>
+#include <esp_timer.h>
 #include "esp_log.h"
 #include "sim800l.h"
 #include "driver/uart.h"
@@ -64,27 +65,45 @@ void turnOffSim800l() {
     ESP_LOGI(TAG, "SIM800L is turned OFF!");
 }
 
+// This function sends command to sim800l and waits for certain response.
+// Sim800l respond lines, so we just compare received line to desired one.
+// If desired line was not found within 2 sec, function returns 0;
+// If sim800l doesnt respond with new symbols for 2 sec, function returns 0;
+// In happy case returns 1;
+// Worth to mention that sim800l sends unsolicited message at random time (*PSUTTZ, +CIEV, SMS Ready etc). Ignoring them
 int sendCommand(char *cmd, char *ok_response) {
+    ESP_LOGI(TAG, "sending: %s", cmd);
     uart_flush(uart_num);
     uart_write_bytes(UART_NUM, (const char *) cmd, strlen(cmd));
     uart_wait_tx_done(UART_NUM, 100 / portTICK_PERIOD_MS);
     uart_write_bytes(UART_NUM, "\r\n", 2);
     uart_wait_tx_done(UART_NUM, 150 / portTICK_PERIOD_MS);
 
-    char response_buf[100] = {""};
-    int response_len = uart_read_bytes(UART_NUM, (uint8_t *) response_buf, strlen(ok_response),
-                                       2000 / portTICK_PERIOD_MS);
-    response_buf[response_len] = '\0';
-    ESP_LOGI(TAG, "resp: %s", response_buf);
-    bool ok = strcmp(response_buf, ok_response) == 0;
-    if (!ok) {
-        ESP_LOGE(TAG, "command failed: %s", cmd);
-        uart_read_bytes(UART_NUM, (uint8_t *) response_buf, 100,
-                        2000 / portTICK_PERIOD_MS);
-        ESP_LOGE(TAG, "resp: %s", response_buf);
+    int64_t start_time = esp_timer_get_time();
+    while (esp_timer_get_time() - start_time < 3000000) {
+        char line_buf[50] = {""};
+        int i = 0;
+        while (true) {
+            int response_len = uart_read_bytes(UART_NUM, (uint8_t *) line_buf + i, 1,
+                                               2000 / portTICK_PERIOD_MS);
+            if (!response_len) return 0;
+            if (i > 0 && line_buf[i - 1] == '\r' && line_buf[i] == '\n') {
+                line_buf[i - 1] = '\0';
+                break;
+            }
+            i++;
+        }
+        if (strlen(line_buf) == 0) continue; // ignore empty lines
+
+        ESP_LOGI(TAG, "received: %s", line_buf);
+        bool ok = strcmp(line_buf, ok_response) == 0;
+        if (ok) {
+            return 1;
+        }
     }
-    vTaskDelay(500 / portTICK_PERIOD_MS); //todo remove this line if everything is ok without it
-    return ok;
+    ESP_LOGE(TAG, "command failed: %s", cmd);
+
+    return 0;
 }
 
 
