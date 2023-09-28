@@ -12,6 +12,8 @@ void turnOnSim800l();
 
 void turnOffSim800l();
 
-int sendCommand(char * cmd, char *ok_response);
+void sendCommand(char * cmd);
+
+int waitResponse(char * ok_response);
 
 #endif

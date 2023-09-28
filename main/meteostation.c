@@ -98,7 +98,7 @@ static void calibrate_compass(void) {
     qmc5883l_calibrate(&compass_settings);
 }
 
-static uint8_t get_azimuth(void) {
+static int16_t get_azimuth(void) {
     int16_t azimuth;
     qmc5883l_get_azimuth(&compass_settings, &azimuth);
     ESP_LOGI(TAG, "azimuth = %d", azimuth);
@@ -164,38 +164,51 @@ static void get_pressure_and_temperature(int *pressure, int *temperature) {
     *temperature = btemp;
 }
 
-void send_metrics(float wind_speed, int azimuth, int temperature, float voltage, int pressure) {
-    if (!sendCommand("ATZ", "OK")) return;
-    if (!sendCommand("AT+SAPBR=3,1,\"CONTYPE\",\"GPRS\"", "OK")) return;
-    if (!sendCommand("AT+SAPBR=3,1,\"APN\",\"internet.mts.ru\"", "OK")) return;
+void send_metrics(float wind_speed, int16_t azimuth, int temperature, float voltage, int pressure) {
+    sendCommand("ATZ");
+    if (!waitResponse("OK")) return;
+    sendCommand("AT+SAPBR=3,1,\"CONTYPE\",\"GPRS\"");
+    if (!waitResponse("OK")) return;
+    sendCommand("AT+SAPBR=3,1,\"APN\",\"internet.mts.ru\"");
+    if (!waitResponse("OK")) return;
 
     // waiting for network https://stackoverflow.com/a/63193800
     int64_t start_time = esp_timer_get_time();
     while (true) {
-        if (sendCommand("AT+CGREG?", "+CGREG: 0,1")) break;
+        sendCommand("AT+CGREG?");
+        if (waitResponse("+CGREG: 0,1") && waitResponse("OK")) break;
         if (esp_timer_get_time() - start_time > 20000000) {
             ESP_LOGE(TAG, "network not found within 20 sec");
             return;
         }
         vTaskDelay(2000 / portTICK_PERIOD_MS);
     }
-
-    if (!sendCommand("AT+SAPBR=1,1", "OK")) return;
-    if (!sendCommand("AT+SAPBR=2,1", "OK")) return;
-    if (!sendCommand("AT+HTTPINIT", "OK")) return;
-    if (!sendCommand("AT+HTTPPARA=\"CID\",1", "OK")) return;
+    sendCommand("AT+SAPBR=1,1");
+    vTaskDelay(1000 / portTICK_PERIOD_MS); // somewhy this response fails sometimes
+    if (!waitResponse("OK")) return;
+    sendCommand("AT+SAPBR=2,1");
+    if (!waitResponse("OK")) return;
+    sendCommand("AT+HTTPINIT");
+    if (!waitResponse("OK")) return;
+    sendCommand("AT+HTTPPARA=\"CID\",1");
+    if (!waitResponse("OK")) return;
 
     char url_cmd[100];
     sprintf(url_cmd, "AT+HTTPPARA=\"URL\",\"http://%s/spots/%d/metrics\"", SERVER_ADDRESS, DEVICE_ID);
-    if (!sendCommand(url_cmd, "OK")) return;
-    if (!sendCommand("AT+HTTPPARA=\"CONTENT\",\"text/plain\"", "OK")) return;
+    sendCommand(url_cmd);
+    if (!waitResponse("OK")) return;
+    sendCommand("AT+HTTPPARA=\"CONTENT\",\"text/plain\"");
+    if (!waitResponse("OK")) return;
     char request_body[100];
     sprintf(request_body, "%.1f %d %d %.1f %d", wind_speed, azimuth, temperature, voltage, pressure);
     char param[25];
     sprintf(param, "AT+HTTPDATA=%d,20000", strlen(request_body));
-    if (!sendCommand(param, "DOWNLOAD")) return;
-    if (!sendCommand(request_body, "OK")) return;
-    if (!sendCommand("AT+HTTPACTION=1", "OK")) return;
+    sendCommand(param);
+    if (!waitResponse("DOWNLOAD")) return;
+    sendCommand(request_body);
+    if (!waitResponse("OK")) return;
+    sendCommand("AT+HTTPACTION=1");
+    if (!waitResponse("OK")) return;
 }
 
 void app_main(void) {
@@ -228,7 +241,7 @@ void app_main(void) {
     blink();
 
     float wind_speed = get_wind_speed();
-    uint8_t azimuth = get_azimuth();
+    int16_t azimuth = get_azimuth();
     float voltage = get_voltage();
 
     int pressure, temperature;
