@@ -167,6 +167,9 @@ static void get_pressure_and_temperature(int *pressure, int *temperature) {
 void send_metrics(float wind_speed, int16_t azimuth, int temperature, float voltage, int pressure) {
     sendCommand("ATZ");
     if (!waitResponse("OK")) return;
+    sendCommand("AT+CPIN=0000"); // specify correct pin-code here before compiling (do not commit)
+    if (!waitResponse("OK")) return;
+    if (!waitResponse("+CPIN: READY")) return;
     sendCommand("AT+SAPBR=3,1,\"CONTYPE\",\"GPRS\"");
     if (!waitResponse("OK")) return;
     sendCommand("AT+SAPBR=3,1,\"APN\",\"internet.mts.ru\"");
@@ -183,9 +186,16 @@ void send_metrics(float wind_speed, int16_t azimuth, int temperature, float volt
         }
         vTaskDelay(2000 / portTICK_PERIOD_MS);
     }
-    sendCommand("AT+SAPBR=1,1");
-    vTaskDelay(1000 / portTICK_PERIOD_MS); // somewhy this response fails sometimes
-    if (!waitResponse("OK")) return;
+    start_time = esp_timer_get_time();
+    while (true) {
+        sendCommand("AT+SAPBR=1,1");
+        if (waitResponse("OK")) break;
+        if (esp_timer_get_time() - start_time > 10000000) {
+            ESP_LOGE(TAG, "AT+SAPBR=1,1 failed within 10 sec");
+            return;
+        }
+        vTaskDelay(2000 / portTICK_PERIOD_MS);
+    }
     sendCommand("AT+SAPBR=2,1");
     if (!waitResponse("OK")) return;
     sendCommand("AT+HTTPINIT");
@@ -209,6 +219,7 @@ void send_metrics(float wind_speed, int16_t azimuth, int temperature, float volt
     if (!waitResponse("OK")) return;
     sendCommand("AT+HTTPACTION=1");
     if (!waitResponse("OK")) return;
+    if (!waitResponse("+HTTPACTION: 1,200,0")) return;
 }
 
 void app_main(void) {
