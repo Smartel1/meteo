@@ -83,12 +83,12 @@ void sendCommand(char *cmd) {
 // Worth to mention that sim800l sends unsolicited message at random time (*PSUTTZ, +CIEV, SMS Ready etc). Ignoring them
 int waitResponse(char *response) {
     int64_t start_time = esp_timer_get_time();
-    while (esp_timer_get_time() - start_time < 3000000) {
+    while (esp_timer_get_time() - start_time < 5000000) {
         char line_buf[50] = {""};
         int i = 0;
         while (true) {
             int response_len = uart_read_bytes(UART_NUM, (uint8_t *) line_buf + i, 1,
-                                               3000 / portTICK_PERIOD_MS);
+                                               5000 / portTICK_PERIOD_MS);
             if (!response_len) return 0;
             if (i > 0 && line_buf[i - 1] == '\r' && line_buf[i] == '\n') {
                 line_buf[i - 1] = '\0';

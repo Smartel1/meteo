@@ -164,16 +164,16 @@ static void get_pressure_and_temperature(int *pressure, int *temperature) {
     *temperature = btemp;
 }
 
-bool send_metrics(float wind_speed, int16_t azimuth, int temperature, float voltage, int pressure) {
+void send_metrics(float wind_speed, int16_t azimuth, int temperature, float voltage, int pressure) {
     sendCommand("ATZ");
-    if (!waitResponse("OK")) return false;
+    if (!waitResponse("OK")) return;
 //    sendCommand("AT+CPIN=0000"); // specify correct pin-code here before compiling (do not commit)
 //    if (!waitResponse("OK")) return;
 //    if (!waitResponse("+CPIN: READY")) return;
     sendCommand("AT+SAPBR=3,1,\"CONTYPE\",\"GPRS\"");
-    if (!waitResponse("OK")) return false;
+    if (!waitResponse("OK")) return;
     sendCommand("AT+SAPBR=3,1,\"APN\",\"internet.mts.ru\"");
-    if (!waitResponse("OK")) return false;
+    if (!waitResponse("OK")) return;
 
     // waiting for network https://stackoverflow.com/a/63193800
     int64_t start_time = esp_timer_get_time();
@@ -182,48 +182,48 @@ bool send_metrics(float wind_speed, int16_t azimuth, int temperature, float volt
         if (waitResponse("+CGREG: 0,1") && waitResponse("OK")) break;
         if (esp_timer_get_time() - start_time > 20000000) {
             ESP_LOGE(TAG, "network not found within 20 sec");
-            return false;
+            return;
         }
         vTaskDelay(2000 / portTICK_PERIOD_MS);
     }
     start_time = esp_timer_get_time();
     while (true) {
         sendCommand("AT+SAPBR=1,1");
-        if (waitResponse("OK")) break;
+        if (waitResponse("OK")) break; // response may be late
         if (esp_timer_get_time() - start_time > 10000000) {
             ESP_LOGE(TAG, "AT+SAPBR=1,1 failed within 10 sec");
-            return false;
+            return;
         }
         vTaskDelay(2000 / portTICK_PERIOD_MS);
     }
     sendCommand("AT+SAPBR=2,1");
-    if (!waitResponse("OK")) return false;
+    if (!waitResponse("OK")) return;
     sendCommand("AT+HTTPINIT");
-    if (!waitResponse("OK")) return false;
+    if (!waitResponse("OK")) return;
     sendCommand("AT+HTTPPARA=\"CID\",1");
-    if (!waitResponse("OK")) return false;
+    if (!waitResponse("OK")) return;
 
     char url_cmd[100];
     sprintf(url_cmd, "AT+HTTPPARA=\"URL\",\"http://%s/spots/%d/metrics\"", SERVER_ADDRESS, DEVICE_ID);
     sendCommand(url_cmd);
-    if (!waitResponse("OK")) return false;
+    if (!waitResponse("OK")) return;
     sendCommand("AT+HTTPPARA=\"CONTENT\",\"text/plain\"");
-    if (!waitResponse("OK")) return false;
+    if (!waitResponse("OK")) return;
     char request_body[100];
     sprintf(request_body, "%.1f %d %d %.1f %d", wind_speed, azimuth, temperature, voltage, pressure);
     char param[25];
     sprintf(param, "AT+HTTPDATA=%d,20000", strlen(request_body));
     sendCommand(param);
-    if (!waitResponse("DOWNLOAD")) return false;
+    if (!waitResponse("DOWNLOAD")) return;
     sendCommand(request_body);
-    if (!waitResponse("OK")) return false;
+    if (!waitResponse("OK")) return;
     sendCommand("AT+HTTPACTION=1");
-    if (!waitResponse("OK")) return false;
-    if (!waitResponse("+HTTPACTION: 1,200,0")) return false;
-    return true;
+    if (!waitResponse("OK")) return;
+    if (!waitResponse("+HTTPACTION: 1,200,0")) return;
 }
 
 void app_main(void) {
+    int64_t start_time = esp_timer_get_time();
     init_led();
     blink();
 
@@ -259,15 +259,13 @@ void app_main(void) {
     int pressure, temperature;
     get_pressure_and_temperature(&pressure, &temperature);
 
-    int send_attempts = 2;
-    while (send_attempts > 0) {
-        if (send_metrics(wind_speed, azimuth, temperature, voltage, pressure)) break;
-        send_attempts--;
-        ESP_LOGE(TAG, "resending");
-    }
+    send_metrics(wind_speed, azimuth, temperature, voltage, pressure);
     turnOffSim800l();
 
-    esp_sleep_enable_timer_wakeup(MEASURING_INTERVAL);
-    ESP_LOGI(TAG, "Going down for 5 min");
+    int64_t measure_time = esp_timer_get_time() - start_time;
+    int64_t sleep_time = MEASURING_INTERVAL - measure_time;
+    if (sleep_time < 0) sleep_time = 0;
+    esp_sleep_enable_timer_wakeup(sleep_time);
+    ESP_LOGI(TAG, "Going down for %lld us", sleep_time);
     esp_deep_sleep_start();
 }
