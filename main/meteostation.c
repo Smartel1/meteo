@@ -164,16 +164,16 @@ static void get_pressure_and_temperature(int *pressure, int *temperature) {
     *temperature = btemp;
 }
 
-void send_metrics(float wind_speed, int16_t azimuth, int temperature, float voltage, int pressure) {
+bool send_metrics(float wind_speed, int16_t azimuth, int temperature, float voltage, int pressure) {
     sendCommand("ATZ");
-    if (!waitResponse("OK")) return;
-    sendCommand("AT+CPIN=0000"); // specify correct pin-code here before compiling (do not commit)
-    if (!waitResponse("OK")) return;
-    if (!waitResponse("+CPIN: READY")) return;
+    if (!waitResponse("OK")) return false;
+//    sendCommand("AT+CPIN=0000"); // specify correct pin-code here before compiling (do not commit)
+//    if (!waitResponse("OK")) return;
+//    if (!waitResponse("+CPIN: READY")) return;
     sendCommand("AT+SAPBR=3,1,\"CONTYPE\",\"GPRS\"");
-    if (!waitResponse("OK")) return;
+    if (!waitResponse("OK")) return false;
     sendCommand("AT+SAPBR=3,1,\"APN\",\"internet.mts.ru\"");
-    if (!waitResponse("OK")) return;
+    if (!waitResponse("OK")) return false;
 
     // waiting for network https://stackoverflow.com/a/63193800
     int64_t start_time = esp_timer_get_time();
@@ -182,7 +182,7 @@ void send_metrics(float wind_speed, int16_t azimuth, int temperature, float volt
         if (waitResponse("+CGREG: 0,1") && waitResponse("OK")) break;
         if (esp_timer_get_time() - start_time > 20000000) {
             ESP_LOGE(TAG, "network not found within 20 sec");
-            return;
+            return false;
         }
         vTaskDelay(2000 / portTICK_PERIOD_MS);
     }
@@ -192,34 +192,35 @@ void send_metrics(float wind_speed, int16_t azimuth, int temperature, float volt
         if (waitResponse("OK")) break;
         if (esp_timer_get_time() - start_time > 10000000) {
             ESP_LOGE(TAG, "AT+SAPBR=1,1 failed within 10 sec");
-            return;
+            return false;
         }
         vTaskDelay(2000 / portTICK_PERIOD_MS);
     }
     sendCommand("AT+SAPBR=2,1");
-    if (!waitResponse("OK")) return;
+    if (!waitResponse("OK")) return false;
     sendCommand("AT+HTTPINIT");
-    if (!waitResponse("OK")) return;
+    if (!waitResponse("OK")) return false;
     sendCommand("AT+HTTPPARA=\"CID\",1");
-    if (!waitResponse("OK")) return;
+    if (!waitResponse("OK")) return false;
 
     char url_cmd[100];
     sprintf(url_cmd, "AT+HTTPPARA=\"URL\",\"http://%s/spots/%d/metrics\"", SERVER_ADDRESS, DEVICE_ID);
     sendCommand(url_cmd);
-    if (!waitResponse("OK")) return;
+    if (!waitResponse("OK")) return false;
     sendCommand("AT+HTTPPARA=\"CONTENT\",\"text/plain\"");
-    if (!waitResponse("OK")) return;
+    if (!waitResponse("OK")) return false;
     char request_body[100];
     sprintf(request_body, "%.1f %d %d %.1f %d", wind_speed, azimuth, temperature, voltage, pressure);
     char param[25];
     sprintf(param, "AT+HTTPDATA=%d,20000", strlen(request_body));
     sendCommand(param);
-    if (!waitResponse("DOWNLOAD")) return;
+    if (!waitResponse("DOWNLOAD")) return false;
     sendCommand(request_body);
-    if (!waitResponse("OK")) return;
+    if (!waitResponse("OK")) return false;
     sendCommand("AT+HTTPACTION=1");
-    if (!waitResponse("OK")) return;
-    if (!waitResponse("+HTTPACTION: 1,200,0")) return;
+    if (!waitResponse("OK")) return false;
+    if (!waitResponse("+HTTPACTION: 1,200,0")) return false;
+    return true;
 }
 
 void app_main(void) {
@@ -258,7 +259,12 @@ void app_main(void) {
     int pressure, temperature;
     get_pressure_and_temperature(&pressure, &temperature);
 
-    send_metrics(wind_speed, azimuth, temperature, voltage, pressure);
+    int send_attempts = 2;
+    while (send_attempts > 0) {
+        if (send_metrics(wind_speed, azimuth, temperature, voltage, pressure)) break;
+        send_attempts--;
+        ESP_LOGE(TAG, "resending");
+    }
     turnOffSim800l();
 
     esp_sleep_enable_timer_wakeup(MEASURING_INTERVAL);
