@@ -8,7 +8,6 @@
 #include <string.h>
 #include <driver/adc.h>
 #include <esp_sleep.h>
-#include <esp_vfs_dev.h>
 #include "qmc5883l.h"
 #include "sim800l.h"
 #include "bmx280.h"
@@ -27,7 +26,7 @@ static const char *TAG = "meteo";
 #define IP5306_REG_SYS_CTL0 0x00 // Регистр IP5306_SYS_CTL0
 
 #define DEVICE_ID 1
-#define SERVER_ADDRESS "193.124.125.33"
+#define SERVER_ADDRESS "194.87.232.212"
 #define MEASURING_INTERVAL 300000000 // 5 min
 
 #define portTICK_RATE_MS     ( (TickType_t) 1000 / configTICK_RATE_HZ )
@@ -172,7 +171,7 @@ void send_metrics(float wind_speed, int16_t azimuth, int temperature, float volt
 //    if (!waitResponse("+CPIN: READY")) return;
     sendCommand("AT+SAPBR=3,1,\"CONTYPE\",\"GPRS\"");
     if (!waitResponse("OK")) return;
-    sendCommand("AT+SAPBR=3,1,\"APN\",\"internet.mts.ru\"");
+    sendCommand("AT+SAPBR=3,1,\"APN\",\"internet\"");
     if (!waitResponse("OK")) return;
 
     // waiting for network https://stackoverflow.com/a/63193800
