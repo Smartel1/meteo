@@ -24,6 +24,7 @@ static const char *TAG = "meteo";
 #define GPIO_SCL GPIO_NUM_22
 #define IP5306_ADDR 0x75 // Адрес устройства IP5306
 #define IP5306_REG_SYS_CTL0 0x00 // Регистр IP5306_SYS_CTL0
+#define BOOST_OUT_BIT 0x02 // бит, отключающий умирание ip5306 при низком потреблении тока
 
 #define DEVICE_ID 1
 #define SERVER_ADDRESS "194.87.232.212"
@@ -57,13 +58,19 @@ static void blink(void) {
 }
 
 void configure_ip5306() {
-    uint8_t config = 0b10111110;
+    uint8_t readbuf[1] = {0};
+    uint8_t writebuf[1] = {IP5306_REG_SYS_CTL0};
+    i2c_master_write_read_device(I2C_PORT, IP5306_ADDR,
+                                 writebuf, 1,
+                                 readbuf, 1, 10);
+    ESP_LOGI(TAG, "%d", readbuf[0]);
+    uint8_t config = readbuf[0] | BOOST_OUT_BIT;
     uint8_t packet[2] = {IP5306_REG_SYS_CTL0, config};
-    ESP_ERROR_CHECK(i2c_master_write_to_device(
+    i2c_master_write_to_device(
             I2C_PORT,
             IP5306_ADDR,
             packet, 2,
-            10));
+            10);
 }
 
 void increment_hall_transitions(void* arg) {
