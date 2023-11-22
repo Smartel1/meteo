@@ -40,6 +40,7 @@ static float X_SCALE = 0.87f;
 static int Z_OFFSET = 53;
 static float Z_SCALE = 1.17f;
 
+static bool hall_transitions_led = false;
 static uint8_t hall_transitions = 0;
 
 static qmc5883l_settings compass_settings;
@@ -73,9 +74,16 @@ void configure_ip5306() {
             10);
 }
 
-void increment_hall_transitions(void* arg) {
+void increment_hall_transitions(void *arg) {
     hall_transitions++;
     static int led = 0;
+    if (!hall_transitions_led) {
+        if (led) {
+            gpio_set_level(BLINK_GPIO, 0);
+        }
+        led = 0;
+        return;
+    }
     gpio_set_level(BLINK_GPIO, !led);
     led = !led;
 }
@@ -93,11 +101,13 @@ static void init_hall_sensor(void) {
 
 static float get_wind_speed(void) {
     ESP_LOGI(TAG, "Measuring wind speed");
+    hall_transitions_led = true;
     uint8_t prev_hall_transitions = hall_transitions;
     vTaskDelay(5000 / portTICK_RATE_MS);
-    uint8_t rounds_count = (hall_transitions - prev_hall_transitions) / 4; // 2 on and 2 offs per round
-    ESP_LOGI(TAG, "Rounds made in 5 sec: %d", rounds_count);
-    return rounds_count; //todo подставить коэффициент
+    hall_transitions_led = false;
+    float rounds_count = (float) (hall_transitions - prev_hall_transitions) / 4; // 2 on and 2 offs per round
+    ESP_LOGI(TAG, "Rounds made in 5 sec: %.1f", rounds_count);
+    return rounds_count / 2.5f + 1;
 }
 
 static void calibrate_compass(void) {
@@ -112,7 +122,8 @@ static int16_t get_azimuth(void) {
 }
 
 static float get_voltage(void) {
-    float voltage = (float) adc1_get_raw(ADC1_CHANNEL_7) / 386.0;
+    //todo measure battery level
+    float voltage = (float) adc1_get_raw(ADC1_CHANNEL_7) / 564;
     ESP_LOGI(TAG, "voltage = %.1f", voltage);
     return voltage;
 }
