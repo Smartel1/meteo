@@ -8,6 +8,7 @@
 #include <string.h>
 #include <driver/adc.h>
 #include <esp_sleep.h>
+#include <esp_adc_cal.h>
 #include "qmc5883l.h"
 #include "sim800l.h"
 #include "bmx280.h"
@@ -25,6 +26,8 @@ static const char *TAG = "meteo";
 #define IP5306_ADDR 0x75 // Адрес устройства IP5306
 #define IP5306_REG_SYS_CTL0 0x00 // Регистр IP5306_SYS_CTL0
 #define BOOST_OUT_BIT 0x02 // бит, отключающий умирание ip5306 при низком потреблении тока
+#define VOLTAGE_DIVIDER 2 // для измерения напряжения батареи используется делитель напряжения
+#define VOLTAGE_MEASURE_FAULT_FACTOR 0.98f // экспериментально выявленная погрешность измерений
 
 #define DEVICE_ID 1
 #define SERVER_ADDRESS "194.87.232.212"
@@ -122,9 +125,13 @@ static int16_t get_azimuth(void) {
 }
 
 static float get_voltage(void) {
-    //todo measure battery level
-    float voltage = (float) adc1_get_raw(ADC1_CHANNEL_7) / 564;
+    esp_adc_cal_characteristics_t adc_chars;
+    esp_adc_cal_characterize(ADC_UNIT_1, ADC_ATTEN_DB_11, ADC_WIDTH_BIT_DEFAULT, 0, &adc_chars);
+    ESP_ERROR_CHECK(adc1_config_channel_atten(ADC1_CHANNEL_7, ADC_ATTEN_DB_11));
+    int out = adc1_get_raw(ADC1_CHANNEL_7);
+    float voltage = (float) esp_adc_cal_raw_to_voltage(out, &adc_chars) * VOLTAGE_DIVIDER / 1000 * VOLTAGE_MEASURE_FAULT_FACTOR;
     ESP_LOGI(TAG, "voltage = %.1f", voltage);
+    vTaskDelay(pdMS_TO_TICKS(100));
     return voltage;
 }
 
